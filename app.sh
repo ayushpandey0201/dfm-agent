@@ -39,16 +39,36 @@ else
     source .venv/bin/activate
 fi
 
-# Double check that uvicorn exists before starting
-if [ ! -f ".venv/bin/uvicorn" ]; then
-    echo "ERROR: uvicorn is missing. The virtual environment might be corrupted."
+# Double check the venv actually works before starting. A venv that was created
+# under a different path (e.g. the project folder was moved or renamed) still has
+# all its files, but every script inside it points at an interpreter that no
+# longer exists — so test that the interpreter runs and uvicorn imports.
+if ! .venv/bin/python -c "import uvicorn" >/dev/null 2>&1; then
+    echo "ERROR: The virtual environment is broken (its Python or uvicorn is unusable)."
+    echo "This usually happens after moving or renaming the project folder."
     echo "Please run: rm -rf .venv && ./app.sh"
     exit 1
 fi
 
 echo "Starting FastAPI backend..."
-nohup .venv/bin/uvicorn api:app --reload > backend.log 2>&1 &
+# Invoke via 'python -m' rather than .venv/bin/uvicorn so the hardcoded shebang
+# inside the console script can never break this.
+nohup .venv/bin/python -m uvicorn api:app --reload > backend.log 2>&1 &
 echo $! > .backend.pid
+
+# Wait for the backend to actually come up; otherwise the frontend proxy just
+# returns 500s and the real error stays buried in backend.log.
+for _ in $(seq 1 30); do
+    if curl -fsS http://127.0.0.1:8000/openapi.json >/dev/null 2>&1; then
+        break
+    fi
+    sleep 1
+done
+if ! curl -fsS http://127.0.0.1:8000/openapi.json >/dev/null 2>&1; then
+    echo "ERROR: Backend failed to start. Last lines of backend.log:"
+    tail -20 backend.log
+    exit 1
+fi
 
 # --- FRONTEND SETUP ---
 cd frontend

@@ -12,6 +12,8 @@ function App() {
 
   const handleFileUpload = async (e) => {
     const file = e.target.files[0];
+    // Clear the input so re-selecting the same file still fires onChange
+    e.target.value = '';
     if (!file) return;
     setSelectedFile(file);
 
