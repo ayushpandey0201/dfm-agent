@@ -224,21 +224,19 @@ def test_nozzle_bore_is_released_by_an_axial_side_core():
         )
 
 
-@pytest.mark.xfail(
-    reason="parting line is derived correctly only when the pull is roughly "
-           "along the part's dominant axis. For a perpendicular pull the loop "
-           "must lie in a plane CONTAINING the axis (the clamshell split the "
-           "reviewer drew); we currently return a circle perpendicular to it, "
-           "which cannot separate the two halves.",
-    strict=True,
-)
 def test_nozzle_parting_line_contains_the_part_axis():
-    """The clamshell split: the loop must span the part along its own axis."""
+    """The clamshell split: the loop must span the part along its own axis.
+
+    Was an expected failure until silhouette assistance existed. A pull
+    perpendicular to the part axis splits it like a clamshell, and that plane
+    passes through the middle of the outer wall where the B-rep has no edge at
+    all — so no amount of edge selection could produce it, and the engine
+    returned a circle perpendicular to the axis, which cannot part the halves.
+    `core/parting/silhouette.py` computes the horizon curves the split needs.
+    """
     path, exp = _nozzle()
     res = analyze_part(path, "oring_nozzle")
-    loop = compute_parting_line_result(
-        res.raw_shape, res.faces, res.best_mold_direction
-    ).primary_loop
+    loop = res.parting_line.primary_loop
 
     points = _loop_points(loop)
     axis = exp["part_axis"]
@@ -247,4 +245,45 @@ def test_nozzle_parting_line_contains_the_part_axis():
         f"loop spans only {spread:.1f} mm along the part axis but the part is "
         f"{exp['height']} mm tall — the loop lies across the axis instead of "
         f"containing it, so it cannot part the two halves"
+    )
+
+
+def test_nozzle_parting_line_lies_in_a_plane_containing_the_axis():
+    """The other half of the clamshell claim: the loop is FLAT and vertical.
+
+    Spanning the axis is necessary but not sufficient — a loop could zigzag up
+    and down the wall and still span it. The reviewer's answer is a plane, so
+    the loop must have no extent at all along the pull direction.
+    """
+    path, exp = _nozzle()
+    res = analyze_part(path, "oring_nozzle")
+    loop = res.parting_line.primary_loop
+
+    spread = _spread_along(_loop_points(loop), res.best_mold_direction)
+    assert spread < 0.1, (
+        f"loop wanders {spread:.3f} mm along the pull direction; the clamshell "
+        f"split lies in a single plane normal to the pull"
+    )
+
+
+def test_nozzle_reports_the_bore_as_a_side_action_not_as_solved():
+    """The parting line must not claim to have released the bore.
+
+    The loop only CLOSES because a side core forms the bore, and the result
+    has to say so: `shutoff_length` records how much of it is side-action
+    surface, and validation must still be failing on the remaining undercut.
+    A parting line cannot release an undercut, and a result that looked valid
+    here would be exactly the "hide undercuts behind a plausible line" failure.
+    """
+    path, _exp = _nozzle()
+    res = analyze_part(path, "oring_nozzle")
+    parting = res.parting_line
+
+    assert parting.primary_loop.shutoff_length > 0.0, (
+        "the bore is formed by a side core, so part of this loop is shutoff"
+    )
+    assert not parting.is_valid, "a part with a real undercut is not fully solved"
+    assert any(c.name == "no_undercuts_remaining" for c in parting.validation.failures)
+    assert parting.confidence <= 0.85, (
+        f"confidence {parting.confidence} is not capped by the undercut failure"
     )

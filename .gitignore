@@ -222,3 +222,7 @@ __marimo__/
 
 # local Claude Code config
 .claude/
+
+# Ignore all local prompt files
+docs/prompts/
+docs/reference_images/

@@ -26,7 +26,13 @@ _OUTDIR = os.path.join(tempfile.gettempdir(), "dfm_synthetic_parts")
 
 
 def _export(name: str, solid: cq.Workplane) -> str:
-    """Export a solid to STEP once per session and cache the path."""
+    """Export a solid to STEP once per session and cache the path.
+
+    NOTE: the cache key is the NAME only, not the builder's arguments. Calling
+    a builder twice in one session with different dimensions returns the first
+    export both times. Each distinct shape therefore needs its own builder and
+    its own name — do not parameterise an existing one and expect new geometry.
+    """
     if name in _CACHE and os.path.exists(_CACHE[name]):
         return _CACHE[name]
     os.makedirs(_OUTDIR, exist_ok=True)
@@ -210,6 +216,31 @@ def solid_box(x: float = 40.0, y: float = 30.0, z: float = 20.0):
         "size": (x, y, z),
     }
     return _export("p6_solid_box", solid), expected
+
+
+def solid_cube(side: float = 30.0):
+    """
+    A cube: convex, and with NO distinguished direction at all.
+
+    Every principal axis has the same spread, so the eigenvectors of its point
+    cloud are arbitrary — any rotation of them describes the cube equally well.
+    A direction generator that reports one of them as a "dominant geometric
+    axis" is reporting noise, which is the property this fixture pins down.
+
+    Also the simplest possible acceptance case: zero undercuts in every
+    direction, and a parting line that is one of its face outlines.
+    """
+    solid = cq.Workplane("XY").box(side, side, side, centered=(True, True, False))
+    expected = {
+        "name": "solid_cube",
+        "undercut_faces": 0,
+        "face_count": 6,
+        "side": side,
+        "silhouette_area": side * side,
+        # No axis is distinguished, so none should be proposed as one.
+        "principal_axes": 0,
+    }
+    return _export("p13_solid_cube", solid), expected
 
 
 # --------------------------------------------------------------------------
@@ -423,4 +454,5 @@ ALL_PARTS = [
     capped_cup,
     cylinder_blind_pocket,
     oring_nozzle,
+    solid_cube,
 ]
