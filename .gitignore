@@ -223,3 +223,6 @@ __marimo__/
 # local Claude Code config
 .claude/
 .venv-win/
+
+# project documentation — kept local, not tracked
+docs/

@@ -31,6 +31,7 @@
 | **Parse STEP & Evaluate Pull Direction** | Loads `.stp` files and automatically calculates the mathematically optimal mold pull direction. |
 | **Surface Normal & Draft Angle Analysis** | Classifies faces into Core, Cavity, Undercut, and Warning categories with draft angle evaluation against the resolved mold-pull direction. |
 | **Propose Core–Cavity Split** | Derives the main parting line as the closed loop where core-assigned and cavity-assigned surfaces meet, and ranks alternate candidate loops. |
+| **Side Cores & Lifters** | Groups trapped faces into physical features and recommends a mechanism (side-action slider, lifter, or collapsible core) with its retraction axis and area share. |
 | **Clear 3D Visualization** | A rich React + Three.js frontend to visualize analysis results directly in your browser. |
 
 <br />
@@ -178,6 +179,7 @@ dfm-agent/
 ├── api.py           # FastAPI application entry point
 ├── core/            # DfM logic (parting lines, surface classification)
 ├── frontend/        # React/Vite UI & Three.js viewer
+├── docs/            # Methodology report, decision log, walkthrough — see docs/README.md
 ├── tests/           # 33 tests: synthetic ground truth + parting-line topology
 ├── app.sh           # One-click start for macOS / Linux
 ├── stop.sh          # One-click stop for macOS / Linux

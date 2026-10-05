@@ -24,17 +24,20 @@ Every face on the 3D model is analyzed and classified:
 - **Undercut Faces**: Faces that are completely trapped.
 
 ### 4. Parting Line Generation
-The backend extracts the exact boundary edges separating the Core and Cavity faces, chains them into ordered loops, verifies closure, and selects the **single closed primary parting line** (the manufacturable mold-split boundary), with ranked alternates available for inspection. 
+The backend extracts the exact boundary edges separating the Core and Cavity faces, chains them into ordered loops, verifies closure, and selects the **single closed primary parting line** (the manufacturable mold-split boundary), with ranked alternates available for inspection.
 
-### 5. Manufacturability Scoring
+### 5. Side Cores & Lifters
+Trapped faces are grouped into connected physical features rather than reported as a raw face count (one groove can arrive as dozens of B-rep slivers). Each region gets a recommended mechanism — side-action slider, lifter, or collapsible core — its retraction axis, angular wrap, and share of surface area, so an undercut reads as a tooling decision instead of a failure.
+
+### 6. Manufacturability Scoring
 A comprehensive score from 0 to 100 is generated based on a weighted penalty formula that considers both the area and the count of undercut and low-draft faces.
 
-### 6. Interactive 3D Visualization
+### 7. Interactive 3D Visualization
 The frontend features a high-fidelity, interactive 3D viewer built with React Three Fiber. Users can rotate, pan, and zoom their model. The faces are color-coded based on their DfM classification (e.g., bright red for undercuts, grey for core/cavity), and the parting line is highlighted with a vivid cyan wireframe.
 
 
 ## Future Roadmap
-- Support for complex side-actions (sliders and lifters) in the undercut detection algorithm.
+- Freeform (non-planar) silhouette splitting, beyond the current surfaces-of-revolution case.
 - Wall thickness analysis to detect overly thick/thin sections.
 - Multi-cavity layout optimization.
 - Native integration with popular CAD software via plugins.

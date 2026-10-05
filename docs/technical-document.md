@@ -26,10 +26,13 @@ flowchart LR
     A[STEP file] --> B[step_parser\nfaces + surface samples]
     B --> C[UndercutRaycaster\nbuilt once per part]
     C --> D[mold_direction\naxis sweep + sign pick]
-    D --> E[draft_angle\nworst-case per face]
+    D --> D2[silhouette\nsplit straddling faces\nfor perpendicular pulls]
+    D2 --> E[draft_angle\nworst-case per face]
     E --> F[face_classifier\ncore / cavity / undercut]
     F --> G[parting_line\nsingle closed primary loop]
+    F --> G2[undercut_regions\nside cores and lifters]
     G --> H[JSON response\nmetrics + tessellated geometry]
+    G2 --> H
     H --> I[React 3D viewer]
 ```
 
@@ -133,7 +136,45 @@ Key decisions:
   during the sweep; at the end, only faces that showed any trapping are
   re-evaluated at full sample resolution.
 
-## 5. Manual Override
+## 5. Silhouette Splitting (`core/silhouette.py`)
+
+A face whose normal changes sign across the pull direction is physically
+formed by BOTH mold halves. `face_classifier` can only assign a whole face to
+one half, so an unsplit straddling face pins the core/cavity boundary to that
+face's own edges instead of letting it run through the middle where it
+belongs. This never mattered for a pull roughly along a part's own axis —
+Part 1 has 0% straddling area under its pull — but a pull PERPENDICULAR to a
+part's dominant axis can straddle most of the surface (66% on the reviewer's
+nozzle example, reconstructed from the Phase 1 call).
+
+```mermaid
+flowchart TD
+    A[winning pull direction] --> B{any face's normal\nchanges sign vs pull?}
+    B -- "< 2% of area" --> Z[skip: not worth\nre-parsing the shape]
+    B -- ">= 2% of area" --> C{a revolved axis\nperpendicular to pull?}
+    C -- no --> Z
+    C -- yes --> D[cut the SHELL along the plane\ncontaining that axis, normal = pull]
+    D --> E[re-sample faces from\nthe split shape]
+    E --> F[continue: draft angle,\nclassification, parting line]
+```
+
+Two details decide whether the cut is safe:
+- **Cuts the SHELL, never the solid.** Splitting a solid divides it into two
+  bodies and injects cross-section faces that are not real part surfaces,
+  which corrupts both the undercut count and the parting line.
+- **Anchored on the straddling face's own axis**, not the part centroid, so
+  an axis offset from the centroid does not misplace the cut.
+
+For any surface of revolution about axis `a` with pull `d` perpendicular to
+`a`, the locus `n·d = 0` sits at θ = ±90° — the plane containing `a` with
+normal `d`. One planar cut therefore produces every silhouette on the part at
+once, and that plane is exactly the clamshell parting plane a mold designer
+would draw. Guarded three ways: skipped below 2% straddling area, skipped
+when no revolved axis is perpendicular to the pull, and falls back to the
+unsplit shape on any failure — so it is always safe to attempt and a no-op on
+every previously-validated part.
+
+## 6. Manual Override
 
 `POST /analyze` with `direction=x,y,z` skips the search and evaluates exactly
 that vector: undercuts, classification, parting line, and score are recomputed
@@ -143,7 +184,7 @@ custom vector input, and a reset to the auto-detected optimum.
 
 ---
 
-## 6. Face Classification (`core/face_classifier.py`)
+## 7. Face Classification (`core/face_classifier.py`)
 
 Every face gets `mold_half` (which half **forms** it) and `classification`
 (render label: core / cavity / undercut):
@@ -176,7 +217,7 @@ Draft (`core/draft_angle.py`) is orthogonal: worst-case draft angle per face
 
 ---
 
-## 7. Parting Line (`core/parting_line.py`)
+## 8. Parting Line (`core/parting_line.py`)
 
 **Definition used (from Bosch):** *the parting curve is where core surfaces
 and cavity surfaces meet*, and the main parting line must be **one closed
@@ -210,7 +251,35 @@ Implementation notes:
 
 ---
 
-## 8. Manufacturability Score (`core/models.py`)
+## 9. Side Cores & Lifters (`core/undercut_regions.py`)
+
+A trapped face's B-rep neighbours are almost never the same as its physical
+feature — one circumferential groove can arrive as dozens of fillet slivers.
+Reporting a raw face count therefore misrepresents the tooling problem, so
+trapped faces are clustered into connected **regions** first and each region
+is treated as one feature.
+
+```mermaid
+flowchart TD
+    A[faces flagged is_undercut] --> B[build face adjacency\nfrom the shape]
+    B --> C[connected-component\ncluster into regions]
+    C --> D{internal bore/pocket,\nor external recess?}
+    D -- internal --> E[lifter or\ncollapsible core]
+    D -- external --> F[side-action slider]
+    E --> G[retraction axis,\nangular wrap, area]
+    F --> G
+    G --> H[flag when several regions\nshare one axis\nvs need separate slides]
+```
+
+Each region reports its mechanism, retraction axis, angular wrap, and share
+of total surface area. Regions sharing one axis (two opposed clips, for
+example) are flagged distinctly from regions that would each need their own
+slide, since the former is a cheaper tool. Validated against a real
+GrabCAD side-core mould (see §11): the engine recommends a side-action
+slider for PLASTIC BUSH's trapped feature, and the mould that was actually
+built uses a Slide Core.
+
+## 10. Manufacturability Score (`core/models.py`)
 
 `100 − area-weighted undercut penalty − count penalty − low-draft penalties`,
 clamped to [0, 100]. Both area and count matter: one large undercut is
@@ -218,7 +287,7 @@ usually easier to fix than twenty scattered ones.
 
 ---
 
-## 9. Validation & Performance
+## 11. Validation & Performance
 
 Reference results (WSL2, single core, includes STEP parse):
 

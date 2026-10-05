@@ -1,0 +1,38 @@
+%%{init: {"theme":"base","themeVariables":{"background":"#0A0F1C","primaryColor":"#0E1526","primaryTextColor":"#E8EDF7","primaryBorderColor":"#22D3EE","secondaryColor":"#111A2E","tertiaryColor":"#0E1526","lineColor":"#4A5E86","fontFamily":"Helvetica, Arial, sans-serif","fontSize":"15px","clusterBkg":"#0C1322","clusterBorder":"#1E2A44"}}}%%
+flowchart TD
+    A["STEP / STP file<br/><i>CAD part, uploaded from the browser</i>"]:::io
+
+    subgraph ENGINE["GEOMETRY ENGINE — Python · OpenCASCADE (OCP) · cadquery"]
+    direction TB
+        B["1 · Parse and UV-sample every face<br/><i>up to 15 real surface normals per face,<br/>only samples that lie on the trimmed face</i>"]
+        C["2 · Build the raycaster once per part<br/><i>one compound of all faces,<br/>reused by every candidate direction</i>"]
+        D["3 · Search the pull axis<br/><i>3 cartesian + 6 diagonal + cylinder/cone axes,<br/>ranked by undercut AREA, count breaks ties</i>"]
+        D2{"Accumulated undercut area<br/>worse than the incumbent best?"}
+        D3["Abort this axis early<br/><i>branch-and-bound; report as a lower bound</i>"]
+        E["4 · Pick the pull sign<br/><i>the core forms the internal surfaces,<br/>so it enters from the side they open toward</i>"]
+        F{"Do any faces' normals<br/>flip across the pull direction?"}
+        G["5 · Split silhouettes<br/><i>cut the SHELL — never the solid — on the plane<br/>containing the revolved axis: the clamshell plane</i>"]
+        H["6 · Classify every face<br/><i>area-weighted normal vote; vertical walls by<br/>reachability rays; through-holes to the core</i>"]
+        I["7 · Parting line<br/><i>chain core↔cavity edges end to end,<br/>keep ONE closed loop, rank on 6 metrics</i>"]
+        J["8 · Undercut regions<br/><i>cluster trapped faces into physical features:<br/>side-action slider, lifter or collapsible core</i>"]
+        K["Manufacturability score 0–100<br/><i>area and count penalties, low-draft warnings</i>"]
+    end
+
+    L["FastAPI · POST /analyze<br/><i>metrics + tessellated geometry as JSON</i>"]:::api
+    M["React · Vite · three.js viewer<br/><i>core / cavity / undercut / parting line,<br/>exploded view, ranked candidates</i>"]:::ui
+
+    A --> B --> C --> D --> D2
+    D2 -- yes --> D3
+    D2 -- "no · keep going" --> E
+    D3 -.-> D
+    E --> F
+    F -- "≥ 2% of surface area straddles" --> G --> H
+    F -- "below threshold · skip" --> H
+    H --> I --> K
+    H --> J --> K
+    K --> L --> M
+    M -. "manual override: direction=x,y,z re-runs the chain" .-> D
+
+    classDef io fill:#111A2E,stroke:#22D3EE,stroke-width:2px,color:#E8EDF7
+    classDef api fill:#0B222B,stroke:#22D3EE,stroke-width:2px,color:#E8EDF7
+    classDef ui fill:#0B222B,stroke:#22D3EE,stroke-width:2px,color:#E8EDF7

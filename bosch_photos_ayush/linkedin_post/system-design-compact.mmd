@@ -1,0 +1,13 @@
+%%{init: {"theme":"base","themeVariables":{"primaryColor":"#0E1526","primaryTextColor":"#E8EDF7","primaryBorderColor":"#22D3EE","lineColor":"#4A5E86","fontFamily":"Helvetica, Arial, sans-serif","fontSize":"18px","clusterBkg":"#0C1322","clusterBorder":"#1E2A44"}}}%%
+flowchart LR
+    A["STEP file"] --> B["Parse and<br/>UV-sample faces"]
+    B --> C["Raycast for<br/>trapped faces"]
+    C --> D["Search the<br/>pull axis"]
+    D --> E["Split faces formed<br/>by both halves"]
+    E --> F["Classify<br/>core / cavity / undercut"]
+    F --> G["Parting line<br/>one closed loop"]
+    F --> H["Undercut regions<br/>side core or lifter"]
+    G --> I["FastAPI<br/>POST /analyze"]
+    H --> I
+    I --> J["React + three.js<br/>3D viewer"]
+    J -. "manual override" .-> D

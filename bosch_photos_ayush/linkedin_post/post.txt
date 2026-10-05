@@ -1,0 +1,59 @@
+𝗔 𝗽𝗹𝗮𝘀𝘁𝗶𝗰 𝗽𝗮𝗿𝘁 𝗶𝘀 𝗲𝗮𝘀𝘆 𝘁𝗼 𝗱𝗲𝘀𝗶𝗴𝗻. 𝗧𝗵𝗲 𝘀𝘁𝗲𝗲𝗹 𝗺𝗼𝗹𝗱 𝘁𝗵𝗮𝘁 𝗺𝗮𝗸𝗲𝘀 𝗶𝘁 𝗶𝘀𝗻'𝘁.
+
+🏆 We won the 𝗗𝗳𝗠 𝗛𝗮𝗰𝗸𝗮𝘁𝗵𝗼𝗻 𝗮𝘁 𝗕𝗼𝘀𝗰𝗵 for a tool that closes that gap:
+
+Upload a CAD file, and it works out how the mold has to open. 👇
+
+Before a mold can be cut, someone has to determine:
+
+→ Which way the two halves should pull apart
+→ Which half forms each surface
+→ Where the core and cavity meet
+→ Which features are trapped and need additional moving steel to release
+
+Today, a tooling expert works much of this out manually — and typically only once the CAD is frozen.
+
+⚙️ 𝗢𝘂𝗿 𝘁𝗼𝗼𝗹 𝘁𝗮𝗸𝗲𝘀 𝗮 𝗦𝗧𝗘𝗣 𝗳𝗶𝗹𝗲 𝗮𝗻𝗱 𝗮𝗻𝘀𝘄𝗲𝗿𝘀 𝗮𝗹𝗹 𝗼𝗳 𝘁𝗵𝗼𝘀𝗲 𝗾𝘂𝗲𝘀𝘁𝗶𝗼𝗻𝘀 𝗮𝘂𝘁𝗼𝗺𝗮𝘁𝗶𝗰𝗮𝗹𝗹𝘆.
+
+System design in the first image.
+
+⏱️ A review that normally takes an engineer 𝟯–𝟰 𝗵𝗼𝘂𝗿𝘀 can be reduced to 𝘀𝗲𝗰𝗼𝗻𝗱𝘀.
+
+We were evaluated on four criteria:
+
+• Optimal mold direction
+• Undercut identification
+• Core/cavity classification
+• Parting line generation
+
+🧠 𝗧𝗛𝗥𝗘𝗘 𝗜𝗗𝗘𝗔𝗦 𝗗𝗜𝗗 𝗠𝗢𝗦𝗧 𝗢𝗙 𝗧𝗛𝗘 𝗪𝗢𝗥𝗞
+
+1️⃣ 𝗦𝗮𝗺𝗽𝗹𝗲 𝗮 𝗳𝗮𝗰𝗲, 𝗱𝗼𝗻'𝘁 𝘀𝘂𝗺𝗺𝗮𝗿𝗶𝘀𝗲 𝗶𝘁.
+
+A cylinder's normals sweep 360°, so one normal per face describes 𝘯𝘰𝘵𝘩𝘪𝘯𝘨. Every face carries a grid of real surface normals, and every downstream verdict is an area-weighted vote over those samples.
+
+2️⃣ 𝗔𝗻 𝘂𝗻𝗱𝗲𝗿𝗰𝘂𝘁 𝗶𝘀 𝗮 𝗽𝗵𝘆𝘀𝗶𝗰𝘀 𝗾𝘂𝗲𝘀𝘁𝗶𝗼𝗻, 𝗻𝗼𝘁 𝗮 𝗱𝗿𝗮𝗳𝘁-𝗮𝗻𝗴𝗹𝗲 𝗼𝗻𝗲.
+
+From each sample, we cast a ray along the mold opening direction. The face is trapped only when 𝘯𝘦𝘪𝘵𝘩𝘦𝘳 half can pull away from it.
+
+And only rays that 𝘦𝘯𝘵𝘦𝘳 material count as blockers — grazing a neighbouring fillet is not a physical obstruction.
+
+3️⃣ 𝗧𝗵𝗲 𝗽𝗮𝗿𝘁𝗶𝗻𝗴 𝗹𝗶𝗻𝗲 𝗵𝗮𝘀 𝘁𝗼 𝗰𝗹𝗼𝘀𝗲.
+
+It is the curve where core and cavity surfaces meet, chained end-to-end into 𝗼𝗻𝗲 𝗰𝗼𝗻𝘁𝗶𝗻𝘂𝗼𝘂𝘀 𝗹𝗼𝗼𝗽. A discontinuous loop isn't a mold split — it's solid steel.
+
+🔁 𝗗𝗲𝘁𝗲𝗿𝗺𝗶𝗻𝗶𝘀𝘁𝗶𝗰 𝗲𝗻𝗱 𝘁𝗼 𝗲𝗻𝗱.
+
+Same file, same answer, every time. No model. No training data.
+
+🛠️ FastAPI · OpenCASCADE (OCP) · CadQuery · React + Vite · Three.js
+
+👥 𝗧𝗲𝗮𝗺: Vivek Boora · Nitin Harsur · Afeera Nikhath · and me
+
+A four-person build where the four evaluation criteria mapped closely to the problems we each owned.
+
+🙏 Huge thanks to Sunil Kumar Narayanan, Vivek Raj Senthil Murugan, Shrikrishna G and Mohan Bellur at Bosch Global Software Technologies for the sharpest review feedback I have received on anything I've built.
+
+And thanks to B. M. S. College of Engineering.
+
+#DFM #InjectionMolding #ComputationalGeometry #OpenCASCADE #Bosch

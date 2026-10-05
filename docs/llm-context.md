@@ -52,7 +52,7 @@ exploded core/cavity view, parting line rendering, direction override panel).
 ### 1.3 Deliverables required (from the official Phase 1 PPT)
 1. Working demo (GUI).
 2. **Methodology report — algorithm + flowchart** (now written:
-   `docs/technical-document.md`, with 4 Mermaid flowcharts).
+   `docs/technical-document.md`, with 6 Mermaid flowcharts).
 3. Source code that is "easy to update".
 
 ---
@@ -192,10 +192,13 @@ dfm-agent/
 ├── frontend/src/ModelViewer.jsx # three.js scene: face meshes, exploded view, PL lines
 ├── app.bat / app.ps1 / stop.* # same one-click start/stop for Windows
 └── docs/
-    ├── technical-document.md      # METHODOLOGY REPORT (algorithms + 4 flowcharts) — deliverable
+    ├── README.md                  # INDEX — start here; what each doc is for
+    ├── technical-document.md      # METHODOLOGY REPORT (algorithms + 6 flowcharts) — deliverable
     ├── product-document.md        # product/feature description
-    ├── decision-log.md            # architectural decision record
     ├── product-walkthrough.md     # demo script
+    ├── decision-log.md            # architectural decision record (9 entries)
+    ├── llm-context.md             # THIS FILE — complete knowledge base
+    ├── phase2-presentation-content.md # Phase 2 slide content + Q&A prep
     ├── untillnow.md               # flat-parting-line fix write-up (Part 1, 2026-08-17)
     └── meeting-notes-2026-07-28.md # full Phase 2 Q&A notes (source doc)
 ```
@@ -356,7 +359,7 @@ Malfunctions:
    long curved edges ⇒ 2 endpoints ⇒ "polygon" with area 0.0 ⇒ the real
    parting line ranked LAST and a 90.7 mm snap-leg lug loop at z≈21 was
    selected as primary. (Found 2026-07-29; fixed by tessellating along the
-   curves and chaining, §6.7.)
+   curves and chaining, §6.8.)
 2. **Angular sort is invalid for non-convex loops** — sorting vertices by
    angle around the centroid silently reorders concave outlines into a
    different (convex-ish) polygon, producing a wrong area for exactly the
@@ -564,7 +567,49 @@ take that value to your backend. That's the vector that you have to input”
 (2026-07-28, answering OUR question about why override was scored in Phase 1
 despite being "Level 3"). We match their description literally.
 
-### 6.5 Draft angle (`core/draft_angle.py`)
+### 6.5 Silhouette splitting (`core/silhouette.py`)
+
+Runs AFTER the direction is fixed and BEFORE draft/classification, because it
+changes the face list everything downstream sees.
+
+A face whose normal changes sign across the pull direction (`n·d` positive on
+one part of the surface, negative on another) is physically formed by BOTH
+mold halves. `face_classifier` can only assign a WHOLE face to one half, so an
+unsplit straddling face pins the core/cavity boundary to that face's own
+edges instead of letting it run through the middle where it belongs.
+
+```
+straddling_area(faces, d) / total_area < 2 %      → skip (return None)
+no revolved axis roughly perpendicular to d       → skip (return None)
+otherwise → split_at_silhouette():
+    plane through the straddling face's OWN axis location,
+    plane normal = pull direction d
+    → BRepAlgoAPI_Splitter on the SHELL, never the solid
+    → re-sample faces from the split shape, re-run evaluate_direction
+```
+
+Two details decide whether the cut is safe:
+- **Cuts the SHELL, not the solid.** Splitting a solid divides it into two
+  bodies and injects cross-section faces that are not real part surfaces —
+  that corrupts both the undercut count and the parting line.
+- **Anchored on the straddling face's own axis**, not the part centroid, so
+  an axis offset from the centroid does not misplace the cut.
+
+WHY one plane suffices (DECISION #17): for any surface of revolution about
+axis `a` with pull `d` ⊥ `a`, the silhouette locus `n·d = 0` sits at θ = ±90°
+— the plane containing `a` with normal `d`. One planar cut therefore produces
+every silhouette on the part at once, and that plane is exactly the clamshell
+parting plane a mold designer would draw.
+
+Guarded three ways (below 2 % straddling area, no perpendicular revolved
+axis, and a fallback to the unsplit shape on ANY failure), so it is always
+safe to attempt and a measured no-op on every previously-validated part —
+Part 1 has 0 % straddling area under its pull. It engages on the reviewer's
+nozzle (66 % straddling), where it reproduces all three of his stated
+answers: pull ⊥ part axis, a side core along the axis for the bore, and a
+parting plane containing the axis.
+
+### 6.6 Draft angle (`core/draft_angle.py`)
 
 For the chosen pull direction `d`, per face:
 - **Worst-case draft** = min over all samples of `asin(|n_i · d|)` in
@@ -574,7 +619,7 @@ WHY warnings-not-undercuts (DECISION #7): Bosch designs intentionally carry
 no draft (§3.3); flagging vertical walls as defects would be wrong. Draft
 does NOT enter the undercut logic at all.
 
-### 6.6 Core/cavity classification (`core/face_classifier.py`)
+### 6.7 Core/cavity classification (`core/face_classifier.py`)
 
 Every face gets `mold_half` by a 4-rule cascade:
 1. **Normal voting**: area-weighted over samples; `n·d > +0.01` votes
@@ -604,7 +649,7 @@ cavity; Part 1 pocket walls (ids 278/267/260/274) → core.
 `mold_half` stays set for undercuts too (an undercut face is still formed by
 one half; it just needs a side action).
 
-### 6.7 Parting line (`core/parting_line.py`) — 4-phase pipeline
+### 6.8 Parting line (`core/parting_line.py`) — 4-phase pipeline
 
 **Phase 1 — boundary edges**: map every edge to its 2 adjacent faces
 (`TopExp.MapShapesAndAncestors_s`). A face-side lookup assigns each face
@@ -651,7 +696,50 @@ line, `is_selected=True`); if the top two scores are within
 notes it. API returns the primary loop's tessellated segments always, all
 candidates under `?debug=true`.
 
-### 6.8 Manufacturability score (`core/models.py::compute_score`)
+### 6.9 Side cores & lifters (`core/undercut_regions.py`)
+
+A trapped face's B-rep neighbours are almost never the same thing as its
+physical feature — one circumferential groove can arrive as dozens of fillet
+slivers. A raw face count therefore misrepresents the tooling problem, so
+trapped faces are clustered into connected REGIONS first and each region is
+treated as one feature.
+
+```
+faces with is_undercut → _build_adjacency (shared edges, from the shape)
+                       → _connected_regions (connected components)
+per region: _region_is_internal, _side_action_direction (retraction axis),
+            _angular_span (angular wrap), area share
+
+_recommend() decision tree:
+    internal + wraps a full turn   → collapsible core   (thread / O-ring groove)
+    internal, partial wrap         → lifter             (a slider cannot reach
+                                                         inside the envelope)
+    external, span > 180°          → split cavity (jaws) or opposed sliders
+    external, span ≤ 180°          → side-action slider
+
+→ summarize_regions(): merges opposed sliders onto one shared axis, so the
+  rollup reports regions sharing ONE axis vs regions each needing their own
+  slide (the former is a cheaper tool) — this is what the UI leads with
+```
+
+The forced-ejection ("bump-off") branch is **deliberately omitted**: that rule
+is a ratio of recess DEPTH to feature diameter, and true recess depth needs
+the distance at which a ray leaves the solid, which the raycaster does not
+expose (it answers blocked / not blocked). Two approximations gave obviously
+wrong figures — 13.8 mm for a 3 mm pocket — so it is left out rather than
+reported unreliably. It is material-dependent anyway, and a STEP file carries
+no resin.
+
+Reported per region: mechanism, retraction axis, angular wrap, area share.
+Part 3's 88 trapped faces collapse to **2 regions on 1 side-action axis** —
+the two symmetric snap-leg/lug clusters — which is the number the UI leads
+with; the 88 is shown underneath as the raw face count.
+
+External validation: on the GrabCAD **PLASTIC BUSH** mould the engine
+recommends a side-action slider for the trapped feature, and the mould that
+was actually built for that part uses a Slide Core (see §8.2).
+
+### 6.10 Manufacturability score (`core/models.py::compute_score`)
 
 ```
 score = 100
@@ -664,7 +752,7 @@ WHY area AND count (DECISION #10): area-only made the score insensitive to
 direction changes that scattered many small undercuts; one big undercut is
 usually easier to fix than twenty small ones.
 
-### 6.9 API response shape (`api.py`)
+### 6.11 API response shape (`api.py`)
 
 `POST /analyze` (multipart `file`, optional `direction`, optional
 `?debug=true`) returns JSON:
@@ -679,7 +767,7 @@ usually easier to fix than twenty small ones.
   `parting_line_loops` (candidate count), `parting_line_is_ambiguous`.
 - `parting_line_debug` (debug only): every candidate loop with all 6 metrics.
 
-### 6.10 Frontend behavior (`frontend/src/`)
+### 6.12 Frontend behavior (`frontend/src/`)
 
 - `ModelViewer.jsx`: builds three.js meshes per face, colored by
   `classification` (core=blue-ish group, cavity=warm group, undercut=red,
@@ -704,7 +792,7 @@ usually easier to fix than twenty small ones.
 | 5 | Pull sign from internal-feature opening direction (core = internal side) | "Even the internal surface … formed by the core"; area heuristic failed on BOTH Bosch parts; ray-measured 1133 vs 15 mm² (P1), 650 vs 146 mm² (P3) | results call; measured 2026-07-30 |
 | 6 | Override = ranked dropdown + custom vector + full recompute, HTTP 422 on bad input | Judge: "that is just a UI … the vector that you have to input" | 2026-07-28 meeting ~06:40 |
 | 7 | Draft <1° = warning only, never undercut | Bosch adds no design draft; vendor drafts later from 2D | 2026-07-28 meeting ~26:00 |
-| 8 | Vertical walls by reachability raycast; through-holes → core; external tie → cavity | Part 3 bore (1433 mm²) was labeled cavity = impossible steel; cup ground truth | measured 2026-07-30; mentor's cup rule |
+| 8 | Vertical walls by reachability raycast; through-holes → core (external ties deferred — superseded by #16) | Part 3 bore (1433 mm²) was labeled cavity = impossible steel; cup ground truth | measured 2026-07-30; mentor's cup rule |
 | 9 | PL loops chained along curves (adaptive tessellation), ordered shoelace, closure gate ×0.25 | "One primary loop … solid steel … cannot form a surface"; Part 3 rim area-0.0 bug (2 points from 2 edges) | 2026-07-28 meeting ~38:20; measured |
 | 10 | Score penalizes area AND count | Direction changes were score-invisible with area-only | `docs/decision-log.md` §4 |
 | 11 | Removed frontend core/cavity label swap hack | Frontend must not mask backend semantics; broke after backend fix | code review 2026-07-27 |
@@ -712,6 +800,8 @@ usually easier to fix than twenty small ones.
 | 13 | Side core / lifter PL deprioritized | "Not considered for the evaluation … nobody attempted" | 2026-07-28 meeting ~06:20 |
 | 14 | No LLM/chat features this phase | "As of now that is not required" | 2026-07-28 meeting ~36:00 |
 | 15 | Validate on GrabCAD + synthetic ground-truth parts | Bosch refused a reference answer for Part 3 ("that is the solution"); mentor suggested GrabCAD cup | 2026-07-28 meeting ~21:30 |
+| 16 | Ambiguous external walls (reachable from BOTH halves) are deferred, grouped into connected regions, and each region assigned by the shared EDGE LENGTH it has with already-decided neighbours | A fixed default ("cavity") routed Part 1's boundary around every snap-tab window; edge length *is* the parting line produced, face area never appears in it. Restores the flat 8-edge rim Bosch scored 2/2; every other validated part byte-identical | measured 2026-08-17; `docs/untillnow.md`; Fu/Nee/Fuh (CAD 2002) |
+| 17 | Silhouette splitting: cut the SHELL (never the solid) along the plane containing the dominant revolved axis, normal = pull, when straddling area ≥ 2 % | A face whose normal changes sign across the pull is formed by BOTH halves; unsplit it pins the boundary to its own edges. 0 % straddle on every axis-aligned part (no-op), 66 % on the reviewer's nozzle — reproduces all three of his stated answers | measured 2026-08-17; Phase 1 review call (nozzle) |
 
 ---
 
@@ -831,7 +921,9 @@ parse 1.1 s · raycaster build 0.0 s · winning axis eval ~4 s · losing axes
 | OCP | Python bindings to OpenCASCADE used for all geometry |
 
 ---
-*End of context file. Companion documents: `docs/technical-document.md`
-(methodology + flowcharts), `docs/meeting-notes-2026-07-28.md` (full Q&A),
-`docs/decision-log.md` (ADR-style log), `docs/product-document.md` (product
-view).*
+*End of context file. Companion documents — see `docs/README.md` for the full
+index: `docs/technical-document.md` (methodology + flowcharts),
+`docs/meeting-notes-2026-07-28.md` (full Q&A), `docs/decision-log.md`
+(ADR-style log), `docs/product-document.md` (product view),
+`docs/phase2-presentation-content.md` (slide content), `docs/untillnow.md`
+(flat-parting-line write-up).*
